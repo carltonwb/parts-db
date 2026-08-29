@@ -650,8 +650,20 @@ def export():
     conn.close(); output.seek(0)
     return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=inventory.csv"})
 
+import socket
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
+
 if __name__ == "__main__":
     init_db()
-    # port=5001 moves your sandbox away from your live site on 5000
-    # debug=True turns on automatic live-reloading and browser error messages
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    if is_port_in_use(5000):
+        print("\n--- BACKGROUND SERVICE ACTIVE. LAUNCHING SANDBOX ON PORT 5001 ---\n")
+        app.run(host="0.0.0.0", port=5001, debug=True)
+    else:
+        print("\n--- LAUNCHING STANDALONE SERVER ON PORT 5000 ---\n")
+        app.run(host="0.0.0.0", port=5000, debug=False)
+
+
+
