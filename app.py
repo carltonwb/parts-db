@@ -1,17 +1,21 @@
-import sqlite3, io, csv, os, shutil, uuid
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from flask import Flask, render_template_string
-from flask import request, redirect, Response, jsonify, send_from_directory, flash
+import sqlite3, io, csv, os, shutil, uuid 
+from datetime import datetime 
+from zoneinfo import ZoneInfo 
+from flask import Flask, render_template_string 
+from flask import request, redirect, Response, jsonify, send_from_directory, flash 
 from werkzeug.utils import secure_filename
 
-app = Flask(__name__)
-app.secret_key = "workshop_inventory_secret_key"
-DB_FILE = "/opt/parts-db/inventory.db"
-UPLOAD_FOLDER = "/opt/parts-db/images"
-BACKUP_FOLDER = "/opt/parts-db/backups"
-PROFILES_FOLDER = "/opt/parts-db/part_profiles"
+app = Flask(__name__) 
+app.secret_key = "workshop_inventory_secret_key" 
+
+# CHANGE THIS LINE SO IT SAYS inventory_test.db
+DB_FILE = "/opt/parts-db/inventory_test.db" 
+
+UPLOAD_FOLDER = "/opt/parts-db/images" 
+BACKUP_FOLDER = "/opt/parts-db/backups" 
+PROFILES_FOLDER = "/opt/parts-db/part_profiles" 
 app.config.update(UPLOAD_FOLDER=UPLOAD_FOLDER, PROFILES_FOLDER=PROFILES_FOLDER)
+
 
 def get_phoenix_time():
     return datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y-%m-%d %H:%M:%S")
@@ -648,4 +652,6 @@ def export():
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    # port=5001 moves your sandbox away from your live site on 5000
+    # debug=True turns on automatic live-reloading and browser error messages
+    app.run(host="0.0.0.0", port=5001, debug=True)
