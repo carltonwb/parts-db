@@ -9,9 +9,9 @@ app = Flask(__name__)
 app.secret_key = "workshop_inventory_secret_key"
 
 DB_FILE = "/opt/parts-db/inventory.db"
-UPLOAD_FOLDER = "/opt/parts-db/profile_images"
+UPLOAD_FOLDER = "/opt/parts-db/images"
 BACKUP_FOLDER = "/opt/parts-db/backups"
-PROFILES_FOLDER = "/opt/parts-db/photo_images"
+PROFILES_FOLDER = "/opt/parts-db/part_profiles"
 app.config.update(UPLOAD_FOLDER=UPLOAD_FOLDER, PROFILES_FOLDER=PROFILES_FOLDER)
 
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
@@ -465,8 +465,8 @@ function submitBulkForm(actionType) {
     const checkboxes = document.querySelectorAll(".row-select-checkbox:checked");
     if(checkboxes.length === 0) return;
     if(actionType === 'delete' && !confirm(`Verification: Are you sure you want to permanently delete all ${checkboxes.length} selected items?`)) { return; }
-    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No photo icons available to assign."); return; }
-    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No profile photos available to assign."); return; }
+    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No profile images available to assign."); return; }
+    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No photos available to assign."); return; }
     const itemIds = Array.from(checkboxes).map(cb => cb.value);
     document.getElementById("bulkItemIdsHidden").value = itemIds.join(",");
     document.getElementById("bulkActionTypeHidden").value = actionType;
@@ -554,8 +554,8 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
 """
 HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
     <div class="grid-three">
-        <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to photo_images</button></form></div>
-        <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to profile_images</button></form></div>
+        <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to part_profiles</button></form></div>
+        <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
         <div style="display: flex; flex-direction: column; justify-content: space-between;">
             <div><h3>🧹 System Storage Clean</h3>
                 <p style="font-size:12px; margin:0 0 2px 0; color:#555; line-height:1.2;">Purge unreferenced image assets from storage disk.</p>
@@ -640,11 +640,11 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
         <select id="bulkProfileSelect">
             {% for p_img in profile_list %}<option value="{{ p_img }}">{{ p_img }}</option>{% endfor %}
         </select>
-        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Photo</button>
+        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
         <select id="bulkImageSelect">
             {% for img in image_list %}<option value="{{ img }}">{{ img }}</option>{% endfor %}
         </select>
-        <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Profile</button>
+        <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Photo</button>
         <button type="button" style="background: #dc3545;" onclick="submitBulkForm('delete')">Mass Delete</button>
     </div>
 </div>
@@ -658,9 +658,9 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
 <div class="table-container">
 <table><thead><tr>
 <th style="width:4%; text-align:center;"><input type="checkbox" id="masterSelectCheckbox" onclick="toggleAllRows(this)" style="margin:0; width:auto; cursor:pointer;"></th>
-<th style="width:10%;">Profile</th>
+<th style="width:10%;">Photo</th>
 <th style="width:14%;"><a class="sort-link" href="?q={{ query }}&sort_by=location&direction={% if sort_by == 'location' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Location<span class="sort-arrow {% if sort_by == 'location' %}active{% endif %}">{% if sort_by == 'location' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
-<th style="width:12%;">Photo</th>
+<th style="width:12%;">Profile</th>
 <th style="width:30%;"><a class="sort-link" href="?q={{ query }}&sort_by=part_name&direction={% if sort_by == 'part_name' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Name & Details<span class="sort-arrow {% if sort_by == 'part_name' %}active{% endif %}">{% if sort_by == 'part_name' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
 <th style="width:4%; text-align:center;">Buy</th>
 <th style="width:14%;"><a class="sort-link" href="?q={{ query }}&sort_by=category&direction={% if sort_by == 'category' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Type<span class="sort-arrow {% if sort_by == 'category' %}active{% endif %}">{% if sort_by == 'category' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
@@ -949,11 +949,11 @@ def bulk_operation():
     elif action == "profile":
         for i in ids:
             conn.execute("UPDATE inventory SET profile_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
-        flash(f"Successfully assigned photo icon to {len(ids)} items.")
+        flash(f"Successfully assigned profile image to {len(ids)} items.")
     elif action == "image":
         for i in ids:
             conn.execute("UPDATE inventory SET image_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
-        flash(f"Successfully assigned profile photo to {len(ids)} items.")
+        flash(f"Successfully assigned photo to {len(ids)} items.")
 
     conn.commit(); conn.close()
     return redirect("/#search-box")
