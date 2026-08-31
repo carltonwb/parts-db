@@ -574,6 +574,22 @@ HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
         </div>
     </div>
 </div>
+<div class="box-compact" style="background: #ede7f6;"><h3>🗄️ Backup Manager</h3>
+    <form action="/backup_db" method="POST" style="margin-bottom:8px;"><button type="submit" style="background:#6f42c1; width:100%; font-size:12px; padding:6px 8px; font-weight:bold;">💾 Save New Backup</button></form>
+    <div style="max-height:160px; overflow-y:auto; font-size:12px; background:white; border:1px solid #d4c8f0; border-radius:4px; padding:0 8px;">
+    {% for b in backups %}
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; {% if not loop.last %}border-bottom:1px solid #eee;{% endif %}">
+            <span>{{ b.display_time }} <small style="color:#888;">({{ b.size_kb }} KB)</small></span>
+            <span style="white-space:nowrap;">
+                <form action="/restore_db" method="POST" style="display:inline;" onsubmit="return confirm('Verification: Are you sure you want to overwrite your active database with the backup from {{ b.display_time }}? This cannot be undone.');"><input type="hidden" name="filename" value="{{ b.filename }}"><button type="submit" style="background:#fd7e14; font-size:11px; padding:3px 8px; border:none; border-radius:3px; color:white; cursor:pointer; font-weight:bold;">Restore</button></form>
+                <form action="/delete_backup" method="POST" style="display:inline;" onsubmit="return confirm('Verification: Permanently delete the backup from {{ b.display_time }}?');"><input type="hidden" name="filename" value="{{ b.filename }}"><button type="submit" style="background:#dc3545; font-size:11px; padding:3px 8px; border:none; border-radius:3px; color:white; cursor:pointer; font-weight:bold; margin-left:4px;">Delete</button></form>
+            </span>
+        </div>
+    {% else %}
+        <div style="color:#888; padding:6px 0;">No backups saved yet.</div>
+    {% endfor %}
+    </div>
+</div>
 <div class="grid-split">
     <div class="box-compact" style="background: #fff3cd; border: 1px solid #ffeeba;"><h3>📥 Category CSV Transfer</h3>
         <form action="/import_categories_csv" method="POST" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:4px; margin-bottom:5px;"><input type="file" name="cat_csv_file" accept=".csv" required style="background:white; padding:3px; margin:0; font-size:12px;"><button type="submit" style="background:#ffc107; color:#212529; width:100%; font-size:12px; padding:4px 8px; font-weight:bold; border:none; border-radius:3px;">Upload Categories CSV</button></form>
@@ -584,7 +600,7 @@ HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
     </div>
 </div>"""
 HTML_TABLE_BOX = """<div class="box" id="search-box">
-<a href="/restore_db" class="e-btn r-btn" onclick="return confirm('Verification: Are you sure you want to overwrite your active database data with your saved backup file?');">🔄 Restore Backup</a><a href="/backup_db" class="e-btn b-btn">💾 Save Backup</a><h3>Search Inventory</h3>
+<h3>Search Inventory</h3>
 <form action="/#search-box" method="GET" style="margin-bottom:15px;">
     <div class="row-search">
         <input type="text" name="q" value="{{ query }}" placeholder="Search name...">
@@ -699,6 +715,29 @@ def get_audit_stats():
     no_type = conn.execute("SELECT COUNT(*) FROM inventory WHERE category = 'None' OR category IS NULL").fetchone()[0]
     conn.close()
     return {"unassigned": unassigned, "no_type": no_type}
+
+BACKUP_NAME_RE = re.compile(r'^inventory_backup_(\d{8}_\d{6})\.db$')
+
+def get_backups_list():
+    if not os.path.exists(BACKUP_FOLDER):
+        return []
+    backups = []
+    for f in os.listdir(BACKUP_FOLDER):
+        m = BACKUP_NAME_RE.match(f)
+        if not m: continue
+        path = os.path.join(BACKUP_FOLDER, f)
+        try:
+            dt = datetime.strptime(m.group(1), "%Y%m%d_%H%M%S")
+        except ValueError:
+            continue
+        backups.append({
+            "filename": f,
+            "display_time": dt.strftime("%Y-%m-%d %I:%M %p"),
+            "size_kb": round(os.path.getsize(path) / 1024, 1),
+            "mtime": os.path.getmtime(path),
+        })
+    backups.sort(key=lambda b: b["mtime"], reverse=True)
+    return backups
 @app.route("/")
 def index():
     q, edit_id = request.args.get("q", "").strip(), request.args.get("edit", type=int)
@@ -732,19 +771,46 @@ def index():
     storage_stats = get_disk_stats()
     audit_stats = get_audit_stats()
     matrix_skeleton = get_matrix_skeleton()
+    backups = get_backups_list()
 
     full_html = HTML_PAGE + HTML_JS + HTML_BODY_FORM + HTML_TAIL + HTML_TABLE_BOX + HTML_TABLE_LOOP
-    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton)
+    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups)
 
-@app.route("/backup_db")
+@app.route("/backup_db", methods=["POST"])
 def backup_db():
-    if os.path.exists(DB_FILE): shutil.copy(DB_FILE, os.path.join(BACKUP_FOLDER, "inventory_backup.db"))
+    if os.path.exists(DB_FILE):
+        os.makedirs(BACKUP_FOLDER, exist_ok=True)
+        ts = datetime.now(ZoneInfo("America/Phoenix")).strftime("%Y%m%d_%H%M%S")
+        shutil.copy(DB_FILE, os.path.join(BACKUP_FOLDER, f"inventory_backup_{ts}.db"))
+        flash("Backup saved.")
     return redirect("/#search-box")
 
-@app.route("/restore_db")
+@app.route("/restore_db", methods=["POST"])
 def restore_db():
-    src = os.path.join(BACKUP_FOLDER, "inventory_backup.db")
-    if os.path.exists(src): shutil.copy(src, DB_FILE)
+    filename = request.form.get("filename", "")
+    if not BACKUP_NAME_RE.match(filename):
+        flash("Invalid backup file.")
+        return redirect("/#search-box")
+    src = os.path.join(BACKUP_FOLDER, filename)
+    if os.path.exists(src):
+        shutil.copy(src, DB_FILE)
+        flash(f"Restored from backup: {filename}")
+    else:
+        flash("Backup file not found.")
+    return redirect("/#search-box")
+
+@app.route("/delete_backup", methods=["POST"])
+def delete_backup():
+    filename = request.form.get("filename", "")
+    if not BACKUP_NAME_RE.match(filename):
+        flash("Invalid backup file.")
+        return redirect("/#search-box")
+    path = os.path.join(BACKUP_FOLDER, filename)
+    try:
+        os.remove(path)
+        flash(f"Deleted backup: {filename}")
+    except OSError as e:
+        flash(f"Could not delete backup: {e}")
     return redirect("/#search-box")
 @app.route("/add", methods=["POST"])
 def add():
