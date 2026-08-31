@@ -623,6 +623,12 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
     </div>
 </form>
 
+{% if undo_info %}
+<div style="background:#fff3cd; border:1px solid #ffc107; padding:8px 12px; margin-bottom:10px; border-radius:4px; display:flex; justify-content:space-between; align-items:center; font-size:13px; flex-wrap:wrap; gap:8px;">
+    <span>⚠️ Last bulk action: <b>{{ undo_info.action }}</b> on {{ undo_info.count }} item(s) at {{ undo_info.timestamp }}</span>
+    <form action="/undo_bulk_action" method="POST" style="margin:0;" onsubmit="return confirm('Verification: Undo the last bulk action ({{ undo_info.action }}) affecting {{ undo_info.count }} item(s)?');"><button type="submit" style="background:#dc3545; color:white; border:none; padding:5px 12px; border-radius:4px; font-weight:bold; cursor:pointer; font-size:12px;">↩️ Undo Last Bulk Action</button></form>
+</div>
+{% endif %}
 <div class="bulk-bar" id="bulkActionBar">
     <div class="bulk-title">📦 Bulk Actions Selected (<span id="bulkSelectCount">0</span> items)</div>
     <div class="bulk-actions">
@@ -788,9 +794,10 @@ def index():
     audit_stats = get_audit_stats()
     matrix_skeleton = get_matrix_skeleton()
     backups = get_backups_list()
+    undo_info = get_undo_info()
 
     full_html = HTML_PAGE + HTML_JS + HTML_BODY_FORM + HTML_TAIL + HTML_TABLE_BOX + HTML_TABLE_LOOP
-    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, image_list=image_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups)
+    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, image_list=image_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups, undo_info=undo_info)
 
 @app.route("/backup_db", methods=["POST"])
 def backup_db():
@@ -893,17 +900,43 @@ def update_item(item_id):
     conn.execute("UPDATE inventory SET location = ?, part_name = ?, category = ?, quantity = ?, min_stock = ?, notes = ?, purchase_url = ?, last_updated = ?, drawer_location = ? WHERE id = ?", (request.form.get('location').strip().upper(), request.form.get('part_name').strip(), request.form.get('category'), int(request.form.get('quantity', 0)), int(request.form.get('min_stock', 0)), request.form.get('notes').strip(), request.form.get('purchase_url', '').strip(), get_phoenix_time(), drawer_loc, item_id))
     conn.commit(); conn.close()
     return redirect("/#search-box")
+UNDO_FILE = "/opt/parts-db/backups/.last_bulk_undo.json"
+UNDO_COLUMNS = ["id", "location", "part_name", "category", "quantity", "notes", "purchase_url", "image_filename", "last_updated", "profile_filename", "min_stock", "drawer_location"]
+
+def snapshot_for_undo(action, ids, conn):
+    placeholders = ",".join(["?"] * len(ids))
+    rows = conn.execute(f"SELECT {','.join(UNDO_COLUMNS)} FROM inventory WHERE id IN ({placeholders})", ids).fetchall()
+    snapshot = {
+        "action": action,
+        "timestamp": get_phoenix_time(),
+        "rows": [dict(zip(UNDO_COLUMNS, r)) for r in rows],
+    }
+    os.makedirs(BACKUP_FOLDER, exist_ok=True)
+    with open(UNDO_FILE, "w") as f:
+        json.dump(snapshot, f)
+
+def get_undo_info():
+    if not os.path.exists(UNDO_FILE):
+        return None
+    try:
+        with open(UNDO_FILE) as f:
+            snapshot = json.load(f)
+        return {"action": snapshot["action"], "count": len(snapshot["rows"]), "timestamp": snapshot["timestamp"]}
+    except (json.JSONDecodeError, KeyError):
+        return None
+
 @app.route("/bulk_operation", methods=["POST"])
 def bulk_operation():
     ids_str = request.form.get("item_ids", "").strip()
     action = request.form.get("action_type", "").strip()
     val = request.form.get("action_value", "").strip()
-    
+
     if not ids_str: return redirect("/#search-box")
     try: ids = [int(i) for i in ids_str.split(",") if i]
     except: return redirect("/#search-box")
-    
+
     conn = sqlite3.connect(DB_FILE)
+    snapshot_for_undo(action, ids, conn)
     ts = get_phoenix_time()
     if action == "delete":
         placeholders = ",".join(["?"] * len(ids))
@@ -921,8 +954,34 @@ def bulk_operation():
         for i in ids:
             conn.execute("UPDATE inventory SET image_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
         flash(f"Successfully assigned photo to {len(ids)} items.")
-        
+
     conn.commit(); conn.close()
+    return redirect("/#search-box")
+
+@app.route("/undo_bulk_action", methods=["POST"])
+def undo_bulk_action():
+    if not os.path.exists(UNDO_FILE):
+        flash("Nothing to undo.")
+        return redirect("/#search-box")
+    with open(UNDO_FILE) as f:
+        snapshot = json.load(f)
+    conn = sqlite3.connect(DB_FILE)
+    if snapshot["action"] == "delete":
+        placeholders = ",".join(["?"] * len(UNDO_COLUMNS))
+        for row in snapshot["rows"]:
+            try:
+                conn.execute(f"INSERT INTO inventory ({','.join(UNDO_COLUMNS)}) VALUES ({placeholders})", [row[c] for c in UNDO_COLUMNS])
+            except sqlite3.IntegrityError:
+                pass
+    else:
+        for row in snapshot["rows"]:
+            conn.execute(
+                "UPDATE inventory SET location=?, part_name=?, category=?, quantity=?, notes=?, purchase_url=?, image_filename=?, last_updated=?, profile_filename=?, min_stock=?, drawer_location=? WHERE id=?",
+                (row["location"], row["part_name"], row["category"], row["quantity"], row["notes"], row["purchase_url"], row["image_filename"], row["last_updated"], row["profile_filename"], row["min_stock"], row["drawer_location"], row["id"])
+            )
+    conn.commit(); conn.close()
+    os.remove(UNDO_FILE)
+    flash(f"Undid last bulk action ({snapshot['action']}) affecting {len(snapshot['rows'])} item(s).")
     return redirect("/#search-box")
 
 @app.route("/upload_to_parts_images", methods=["POST"])
