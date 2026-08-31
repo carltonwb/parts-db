@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = "workshop_inventory_secret_key"
 
-DB_FILE = "/opt/parts-db/inventory_test.db"
+DB_FILE = "/opt/parts-db/inventory.db"
 UPLOAD_FOLDER = "/opt/parts-db/images"
 BACKUP_FOLDER = "/opt/parts-db/backups"
 PROFILES_FOLDER = "/opt/parts-db/part_profiles"
