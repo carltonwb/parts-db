@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = "workshop_inventory_secret_key"
 
 DB_FILE = "/opt/parts-db/inventory.db"
-UPLOAD_FOLDER = "/opt/parts-db/images"
+UPLOAD_FOLDER = "/opt/parts-db/profile_images"
 BACKUP_FOLDER = "/opt/parts-db/backups"
 PROFILES_FOLDER = "/opt/parts-db/photo_images"
 app.config.update(UPLOAD_FOLDER=UPLOAD_FOLDER, PROFILES_FOLDER=PROFILES_FOLDER)
@@ -555,7 +555,7 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
 HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
     <div class="grid-three">
         <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to photo_images</button></form></div>
-        <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
+        <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to profile_images</button></form></div>
         <div style="display: flex; flex-direction: column; justify-content: space-between;">
             <div><h3>🧹 System Storage Clean</h3>
                 <p style="font-size:12px; margin:0 0 2px 0; color:#555; line-height:1.2;">Purge unreferenced image assets from storage disk.</p>
