@@ -658,9 +658,9 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
 <div class="table-container">
 <table><thead><tr>
 <th style="width:4%; text-align:center;"><input type="checkbox" id="masterSelectCheckbox" onclick="toggleAllRows(this)" style="margin:0; width:auto; cursor:pointer;"></th>
-<th style="width:10%;">Photo</th>
+<th style="width:10%;">Profile</th>
 <th style="width:14%;"><a class="sort-link" href="?q={{ query }}&sort_by=location&direction={% if sort_by == 'location' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Location<span class="sort-arrow {% if sort_by == 'location' %}active{% endif %}">{% if sort_by == 'location' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
-<th style="width:12%;">Profile</th>
+<th style="width:12%;">Photo</th>
 <th style="width:30%;"><a class="sort-link" href="?q={{ query }}&sort_by=part_name&direction={% if sort_by == 'part_name' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Name & Details<span class="sort-arrow {% if sort_by == 'part_name' %}active{% endif %}">{% if sort_by == 'part_name' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
 <th style="width:4%; text-align:center;">Buy</th>
 <th style="width:14%;"><a class="sort-link" href="?q={{ query }}&sort_by=category&direction={% if sort_by == 'category' and direction == 'asc' %}desc{% else %}asc{% endif %}#search-box">Type<span class="sort-arrow {% if sort_by == 'category' %}active{% endif %}">{% if sort_by == 'category' and direction == 'desc' %}▼{% else %}▲{% endif %}</span></a></th>
