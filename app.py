@@ -11,7 +11,7 @@ app.secret_key = "workshop_inventory_secret_key"
 DB_FILE = "/opt/parts-db/inventory.db"
 UPLOAD_FOLDER = "/opt/parts-db/images"
 BACKUP_FOLDER = "/opt/parts-db/backups"
-PROFILES_FOLDER = "/opt/parts-db/part_profiles"
+PROFILES_FOLDER = "/opt/parts-db/photo_images"
 app.config.update(UPLOAD_FOLDER=UPLOAD_FOLDER, PROFILES_FOLDER=PROFILES_FOLDER)
 
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
@@ -465,10 +465,14 @@ function submitBulkForm(actionType) {
     const checkboxes = document.querySelectorAll(".row-select-checkbox:checked");
     if(checkboxes.length === 0) return;
     if(actionType === 'delete' && !confirm(`Verification: Are you sure you want to permanently delete all ${checkboxes.length} selected items?`)) { return; }
+    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No profile images available to assign."); return; }
+    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No photos available to assign."); return; }
     const itemIds = Array.from(checkboxes).map(cb => cb.value);
     document.getElementById("bulkItemIdsHidden").value = itemIds.join(",");
     document.getElementById("bulkActionTypeHidden").value = actionType;
     if(actionType === 'category') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkCategorySelect").value; }
+    if(actionType === 'profile') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkProfileSelect").value; }
+    if(actionType === 'image') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkImageSelect").value; }
     document.getElementById("bulkActionFormForm").submit();
 }
 document.addEventListener("DOMContentLoaded", () => {
@@ -550,7 +554,7 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
 """
 HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
     <div class="grid-three">
-        <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to part_profiles</button></form></div>
+        <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to photo_images</button></form></div>
         <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
         <div style="display: flex; flex-direction: column; justify-content: space-between;">
             <div><h3>🧹 System Storage Clean</h3>
@@ -627,6 +631,14 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
             {% for c in categories %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
         </select>
         <button type="button" style="background: #17a2b8;" onclick="submitBulkForm('category')">Assign Type</button>
+        <select id="bulkProfileSelect">
+            {% for p_img in profile_list %}<option value="{{ p_img }}">{{ p_img }}</option>{% endfor %}
+        </select>
+        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
+        <select id="bulkImageSelect">
+            {% for img in image_list %}<option value="{{ img }}">{{ img }}</option>{% endfor %}
+        </select>
+        <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Photo</button>
         <button type="button" style="background: #dc3545;" onclick="submitBulkForm('delete')">Mass Delete</button>
     </div>
 </div>
@@ -767,14 +779,18 @@ def index():
     profile_list = []
     if os.path.exists(PROFILES_FOLDER):
         profile_list = sorted([f for f in os.listdir(PROFILES_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))])
-        
+
+    image_list = []
+    if os.path.exists(UPLOAD_FOLDER):
+        image_list = sorted([f for f in os.listdir(UPLOAD_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))])
+
     storage_stats = get_disk_stats()
     audit_stats = get_audit_stats()
     matrix_skeleton = get_matrix_skeleton()
     backups = get_backups_list()
 
     full_html = HTML_PAGE + HTML_JS + HTML_BODY_FORM + HTML_TAIL + HTML_TABLE_BOX + HTML_TABLE_LOOP
-    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups)
+    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, image_list=image_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups)
 
 @app.route("/backup_db", methods=["POST"])
 def backup_db():
@@ -897,6 +913,14 @@ def bulk_operation():
         for i in ids:
             conn.execute("UPDATE inventory SET category = ?, last_updated = ? WHERE id = ?", (val, ts, i))
         flash(f"Successfully remapped types for {len(ids)} items.")
+    elif action == "profile":
+        for i in ids:
+            conn.execute("UPDATE inventory SET profile_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
+        flash(f"Successfully assigned profile image to {len(ids)} items.")
+    elif action == "image":
+        for i in ids:
+            conn.execute("UPDATE inventory SET image_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
+        flash(f"Successfully assigned photo to {len(ids)} items.")
         
     conn.commit(); conn.close()
     return redirect("/#search-box")
