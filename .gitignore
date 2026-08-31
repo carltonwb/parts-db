@@ -3,6 +3,4 @@ __pycache__/
 *.db
 *.db-journal
 backups/
-images/
-part_profiles/
 app_output.log
