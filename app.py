@@ -465,8 +465,8 @@ function submitBulkForm(actionType) {
     const checkboxes = document.querySelectorAll(".row-select-checkbox:checked");
     if(checkboxes.length === 0) return;
     if(actionType === 'delete' && !confirm(`Verification: Are you sure you want to permanently delete all ${checkboxes.length} selected items?`)) { return; }
-    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No profile images available to assign."); return; }
-    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No photos available to assign."); return; }
+    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No photo icons available to assign."); return; }
+    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No profile photos available to assign."); return; }
     const itemIds = Array.from(checkboxes).map(cb => cb.value);
     document.getElementById("bulkItemIdsHidden").value = itemIds.join(",");
     document.getElementById("bulkActionTypeHidden").value = actionType;
@@ -640,11 +640,11 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
         <select id="bulkProfileSelect">
             {% for p_img in profile_list %}<option value="{{ p_img }}">{{ p_img }}</option>{% endfor %}
         </select>
-        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
+        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Photo</button>
         <select id="bulkImageSelect">
             {% for img in image_list %}<option value="{{ img }}">{{ img }}</option>{% endfor %}
         </select>
-        <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Photo</button>
+        <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Profile</button>
         <button type="button" style="background: #dc3545;" onclick="submitBulkForm('delete')">Mass Delete</button>
     </div>
 </div>
@@ -949,11 +949,11 @@ def bulk_operation():
     elif action == "profile":
         for i in ids:
             conn.execute("UPDATE inventory SET profile_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
-        flash(f"Successfully assigned profile image to {len(ids)} items.")
+        flash(f"Successfully assigned photo icon to {len(ids)} items.")
     elif action == "image":
         for i in ids:
             conn.execute("UPDATE inventory SET image_filename = ?, last_updated = ? WHERE id = ?", (val, ts, i))
-        flash(f"Successfully assigned photo to {len(ids)} items.")
+        flash(f"Successfully assigned profile photo to {len(ids)} items.")
 
     conn.commit(); conn.close()
     return redirect("/#search-box")
