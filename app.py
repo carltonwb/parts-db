@@ -9,10 +9,9 @@ app = Flask(__name__)
 app.secret_key = "workshop_inventory_secret_key"
 
 DB_FILE = "/opt/parts-db/inventory.db"
-UPLOAD_FOLDER = "/opt/parts-db/images"
+IMAGES_FOLDER = "/opt/parts-db/images"
 BACKUP_FOLDER = "/opt/parts-db/backups"
-PROFILES_FOLDER = "/opt/parts-db/part_profiles"
-app.config.update(UPLOAD_FOLDER=UPLOAD_FOLDER, PROFILES_FOLDER=PROFILES_FOLDER)
+app.config.update(IMAGES_FOLDER=IMAGES_FOLDER)
 
 ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
 
@@ -252,10 +251,11 @@ function setMode(mode){
     var section = document.getElementById("drawerMatrixConfigSection");
     if(section) section.style.display = (mode === "drawer") ? "block" : "none";
 }
-function openImageModal(targetInputId, promptClass, previewImgId, apiEndpoint, pathPrefix){
+function openImageModal(targetInputId, promptClass, previewImgId, apiEndpoint, pathPrefix, modalTitle){
     currentTargetField = targetInputId;
     currentPromptField = promptClass;
     currentPreviewImgId = previewImgId;
+    document.getElementById("imgModalTitle").textContent = modalTitle || "Select Gallery Image";
     document.getElementById("imgModal").style.display = "block";
     fetch(apiEndpoint).then(r => r.json()).then(images => {
         const grid = document.getElementById("modalImgGrid"); grid.innerHTML = "";
@@ -437,6 +437,9 @@ function clearManualForm(){
     document.getElementById("manualPartForm").reset(); setMode("unassigned");
     document.getElementById("selected_existing_image").value = "";
     document.querySelector(".drop-zone__prompt").textContent = "Drag & Drop Image Here or Click to Browse";
+    document.getElementById("selected_existing_profile").value = "";
+    document.getElementById("initial_profile_prompt").textContent = "No Profile Image Chosen";
+    document.getElementById("initial_profile_preview").style.display = "none";
     document.getElementById("form_drawer_location_indicator").textContent = "No Drawer Assigned";
 }
 function toggleAllRows(masterCheckbox) {
@@ -465,14 +468,12 @@ function submitBulkForm(actionType) {
     const checkboxes = document.querySelectorAll(".row-select-checkbox:checked");
     if(checkboxes.length === 0) return;
     if(actionType === 'delete' && !confirm(`Verification: Are you sure you want to permanently delete all ${checkboxes.length} selected items?`)) { return; }
-    if(actionType === 'profile' && !document.getElementById("bulkProfileSelect").value) { alert("No profile images available to assign."); return; }
-    if(actionType === 'image' && !document.getElementById("bulkImageSelect").value) { alert("No photos available to assign."); return; }
+    if((actionType === 'profile' || actionType === 'image') && !document.getElementById("bulkImageSelect").value) { alert("No images available to assign."); return; }
     const itemIds = Array.from(checkboxes).map(cb => cb.value);
     document.getElementById("bulkItemIdsHidden").value = itemIds.join(",");
     document.getElementById("bulkActionTypeHidden").value = actionType;
     if(actionType === 'category') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkCategorySelect").value; }
-    if(actionType === 'profile') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkProfileSelect").value; }
-    if(actionType === 'image') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkImageSelect").value; }
+    if(actionType === 'profile' || actionType === 'image') { document.getElementById("bulkActionValueHidden").value = document.getElementById("bulkImageSelect").value; }
     document.getElementById("bulkActionFormForm").submit();
 }
 document.addEventListener("DOMContentLoaded", () => {
@@ -523,9 +524,12 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
         <select name="category"><option value="None" selected>None</option>
             {% for cat in categories %}<option value="{{ cat.name }}">{% if cat.parent_name %}{{ cat.parent_name }} &gt; {% endif %}{{ cat.name }}</option>{% endfor %}
         </select>
-        <select name="initial_profile"><option value="">-- Choose Profile Image (Optional) --</option>
-            {% for p_img in profile_list %}<option value="{{ p_img }}">{{ p_img }}</option>{% endfor %}
-        </select>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+            <img id="initial_profile_preview" class="part-img" style="display:none;">
+            <span id="initial_profile_prompt" style="font-size:11px; color:#555; text-align:center;">No Profile Image Chosen</span>
+            <input type="hidden" name="initial_profile" id="selected_existing_profile" value="">
+            <button type="button" onclick="openImageModal('selected_existing_profile', '#initial_profile_prompt', 'initial_profile_preview', '/api/list_images', '/images/', 'Select Profile Image')" style="width:100%; background:#6f42c1;">Choose Profile Image</button>
+        </div>
     </div>
     <div class="grid-three">
         <input type="number" name="quantity" value="0" min="0" placeholder="Qty">
@@ -534,13 +538,13 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
     </div>
     <div class="row2" style="margin-top: 10px;"><input type="text" name="notes" placeholder="Notes (optional)">
         <div><div id="image-drop-zone" class="drop-zone"><span class="drop-zone__prompt">Drag & Drop Image Here or Click to Browse</span><input type="file" name="part_image" id="part_image_input" class="drop-zone__input" accept="image/*"></div>
-            <input type="hidden" name="selected_existing_image" id="selected_existing_image" value=""><button type="button" onclick="openImageModal('selected_existing_image', '.drop-zone__prompt', null, '/api/list_images', '/images/')" style="margin-top:5px; width:100%; background:#17a2b8;">Browse Existing Images</button>
+            <input type="hidden" name="selected_existing_image" id="selected_existing_image" value=""><button type="button" onclick="openImageModal('selected_existing_image', '.drop-zone__prompt', null, '/api/list_images', '/images/', 'Select Photo Image')" style="margin-top:5px; width:100%; background:#17a2b8;">Browse Existing Images</button>
         </div>
     </div>
     <div class="btn-container"><button type="submit">Save Part</button><button type="button" class="clr-btn" onclick="clearManualForm()">Clear</button></div>
 </form></div>
 
-<div id="imgModal" class="modal"><div class="modal-content"><span style="float:right; cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeImageModal()">&times;</span><h4>Select Gallery Image</h4><div id="modalImgGrid" class="img-grid"></div></div></div>
+<div id="imgModal" class="modal"><div class="modal-content"><span style="float:right; cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeImageModal()">&times;</span><h4 id="imgModalTitle">Select Gallery Image</h4><div id="modalImgGrid" class="img-grid"></div></div></div>
 
 <div id="matrixModal" class="modal"><div class="modal-content" style="width:520px; max-height:85vh;"><span style="float:right; cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeMatrixModal()">&times;</span><h4 id="matrixModalTitle" style="margin-top:0; margin-bottom:4px; text-align:center;">📦 Drawer:</h4>
 <div id="matrixModalHint" style="text-align:center; font-size:11px; color:#777; margin-bottom:10px;">Click to select one slot. Ctrl+Click to select multiple.</div>
@@ -553,8 +557,7 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
 </table></div><div id="matrixItemDetails" style="margin-top:10px; padding:8px; border-top:1px solid #ddd; font-size:12px; min-height:36px;"><span style="color:#999;">Click a slot to view its contents.</span></div><div style="text-align:center; margin-top:10px;"><button type="button" class="clr-btn" onclick="closeMatrixModal()">Close Grid View</button></div></div></div>
 """
 HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
-    <div class="grid-three">
-        <div><h3>📁 Bulk Profile Upload</h3><form action="/upload_to_parts_images" method="POST" enctype="multipart/form-data"><input type="file" name="parts_files" multiple required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#28a745; width:100%; font-size:12px; padding:5px 8px;">Upload to part_profiles</button></form></div>
+    <div class="grid-split">
         <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
         <div style="display: flex; flex-direction: column; justify-content: space-between;">
             <div><h3>🧹 System Storage Clean</h3>
@@ -637,13 +640,10 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
             {% for c in categories %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
         </select>
         <button type="button" style="background: #17a2b8;" onclick="submitBulkForm('category')">Assign Type</button>
-        <select id="bulkProfileSelect">
-            {% for p_img in profile_list %}<option value="{{ p_img }}">{{ p_img }}</option>{% endfor %}
-        </select>
-        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
         <select id="bulkImageSelect">
             {% for img in image_list %}<option value="{{ img }}">{{ img }}</option>{% endfor %}
         </select>
+        <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
         <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Photo</button>
         <button type="button" style="background: #dc3545;" onclick="submitBulkForm('delete')">Mass Delete</button>
     </div>
@@ -670,7 +670,7 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
 HTML_TABLE_LOOP = """{% for item_id, loc, name, cat, qty, notes, p_url, img, ts, prof, min_s, drawer_loc in items %}<tr>
 <td style="text-align:center;"><input type="checkbox" class="row-select-checkbox" value="{{ item_id }}" onclick="onRowCheckboxChange()" style="margin:0; width:auto; cursor:pointer;"></td>
 {% if edit_id == item_id %}<form action="/update/{{ item_id }}" method="POST" enctype="multipart/form-data">
-<td><img id="preview_{{ item_id }}" src="{% if img %}/images/{{ img }}{% endif %}" class="part-img" style="margin-bottom:4px; {% if not img %}display:none;{% endif %}"><input type="file" name="part_image" accept="image/*" style="font-size:11px; max-width:90px;" onchange="handleEditFileChange(this, 'preview_{{ item_id }}', 'clear_image_flag_{{ item_id }}')"><br><button type="button" onclick="openImageModal('edit_existing_image_{{ item_id }}', '#prompt_{{ item_id }}', 'preview_{{ item_id }}', '/api/list_images', '/images/')" style="font-size:10px; padding:2px 4px; background:#17a2b8; width:100%; margin-top:2px;">Gallery</button><input type="hidden" name="selected_existing_image" id="edit_existing_image_{{ item_id }}" value=""><input type="hidden" name="clear_image_flag" id="clear_image_flag_{{ item_id }}" value="0"><button type="button" onclick="confirmClearAction('preview_{{ item_id }}', 'edit_existing_image_{{ item_id }}', 'clear_image_flag_{{ item_id }}', '#prompt_{{ item_id }}', 'Verification: Are you sure you want to completely remove this photo asset attachment?')" style="font-size:10px; padding:2px 4px; background:#dc3545; color:white; width:100%; margin-top:2px; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">Remove Photo</button><div id="prompt_{{ item_id }}" style="font-size:9px; color:#555; overflow:hidden; text-overflow:ellipsis; max-width:90px; margin-top:2px;"></div></td>
+<td><img id="preview_{{ item_id }}" src="{% if img %}/images/{{ img }}{% endif %}" class="part-img" style="margin-bottom:4px; {% if not img %}display:none;{% endif %}"><input type="file" name="part_image" accept="image/*" style="font-size:11px; max-width:90px;" onchange="handleEditFileChange(this, 'preview_{{ item_id }}', 'clear_image_flag_{{ item_id }}')"><br><button type="button" onclick="openImageModal('edit_existing_image_{{ item_id }}', '#prompt_{{ item_id }}', 'preview_{{ item_id }}', '/api/list_images', '/images/', 'Select Photo Image')" style="font-size:10px; padding:2px 4px; background:#17a2b8; width:100%; margin-top:2px;">Gallery</button><input type="hidden" name="selected_existing_image" id="edit_existing_image_{{ item_id }}" value=""><input type="hidden" name="clear_image_flag" id="clear_image_flag_{{ item_id }}" value="0"><button type="button" onclick="confirmClearAction('preview_{{ item_id }}', 'edit_existing_image_{{ item_id }}', 'clear_image_flag_{{ item_id }}', '#prompt_{{ item_id }}', 'Verification: Are you sure you want to completely remove this photo asset attachment?')" style="font-size:10px; padding:2px 4px; background:#dc3545; color:white; width:100%; margin-top:2px; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">Remove Photo</button><div id="prompt_{{ item_id }}" style="font-size:9px; color:#555; overflow:hidden; text-overflow:ellipsis; max-width:90px; margin-top:2px;"></div></td>
 <td><input type="text" name="location" value="{{ loc }}" class="t-input" required><br>
     <div style="margin-top:4px; padding:4px; border:1px solid #ccc; background:#fafafa; border-radius:3px;">
         <input type="hidden" name="drawer_location" id="edit_drawer_location_{{ item_id }}" value="{{ drawer_loc }}">
@@ -678,29 +678,20 @@ HTML_TABLE_LOOP = """{% for item_id, loc, name, cat, qty, notes, p_url, img, ts,
         <button type="button" class="s-btn" onclick="openMatrixModal('edit_drawer_location_{{ item_id }}')" style="font-size:9px; padding:2px 4px; width:100%;">Grid Matrix</button>
     </div>
 </td>
-<td><img id="preview_prof_{{ item_id }}" src="{% if prof %}/parts_images/{{ prof }}{% endif %}" class="part-img" style="margin-bottom:4px; {% if not prof %}display:none;{% endif %}"><input type="file" name="profile_image" accept="image/*" style="font-size:11px; max-width:90px;" onchange="handleEditFileChange(this, 'preview_prof_{{ item_id }}', 'clear_profile_flag_{{ item_id }}')"><br><button type="button" onclick="openImageModal('edit_existing_profile_{{ item_id }}', '#prompt_prof_{{ item_id }}', 'preview_prof_{{ item_id }}', '/api/list_profile_images', '/parts_images/')" style="font-size:10px; padding:2px 4px; background:#17a2b8; width:100%; margin-top:2px;">Gallery</button><input type="hidden" name="selected_existing_profile" id="edit_existing_profile_{{ item_id }}" value=""><input type="hidden" name="clear_profile_flag" id="clear_profile_flag_{{ item_id }}" value="0"><button type="button" onclick="confirmClearAction('preview_prof_{{ item_id }}', 'edit_existing_profile_{{ item_id }}', 'clear_profile_flag_{{ item_id }}', '#prompt_prof_{{ item_id }}', 'Verification: Are you sure you want to completely remove this profile image asset mapping?')" style="font-size:10px; padding:2px 4px; background:#dc3545; color:white; width:100%; margin-top:2px; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">Remove Profile</button><div id="prompt_prof_{{ item_id }}" style="font-size:9px; color:#555; overflow:hidden; text-overflow:ellipsis; max-width:90px; margin-top:2px;"></div></td>
+<td><img id="preview_prof_{{ item_id }}" src="{% if prof %}/images/{{ prof }}{% endif %}" class="part-img" style="margin-bottom:4px; {% if not prof %}display:none;{% endif %}"><input type="file" name="profile_image" accept="image/*" style="font-size:11px; max-width:90px;" onchange="handleEditFileChange(this, 'preview_prof_{{ item_id }}', 'clear_profile_flag_{{ item_id }}')"><br><button type="button" onclick="openImageModal('edit_existing_profile_{{ item_id }}', '#prompt_prof_{{ item_id }}', 'preview_prof_{{ item_id }}', '/api/list_images', '/images/', 'Select Profile Image')" style="font-size:10px; padding:2px 4px; background:#17a2b8; width:100%; margin-top:2px;">Gallery</button><input type="hidden" name="selected_existing_profile" id="edit_existing_profile_{{ item_id }}" value=""><input type="hidden" name="clear_profile_flag" id="clear_profile_flag_{{ item_id }}" value="0"><button type="button" onclick="confirmClearAction('preview_prof_{{ item_id }}', 'edit_existing_profile_{{ item_id }}', 'clear_profile_flag_{{ item_id }}', '#prompt_prof_{{ item_id }}', 'Verification: Are you sure you want to completely remove this profile image asset mapping?')" style="font-size:10px; padding:2px 4px; background:#dc3545; color:white; width:100%; margin-top:2px; border:none; border-radius:3px; cursor:pointer; font-weight:bold;">Remove Profile</button><div id="prompt_prof_{{ item_id }}" style="font-size:9px; color:#555; overflow:hidden; text-overflow:ellipsis; max-width:90px; margin-top:2px;"></div></td>
 <td><input type="text" name="part_name" value="{{ name }}" class="t-input" required><br><input type="text" name="notes" value="{{ notes }}" class="t-input" placeholder="Notes"><br><input type="text" name="purchase_url" value="{{ p_url }}" class="t-input" placeholder="Purchase URL"><input type="hidden" name="quantity" value="{{ qty }}"><input type="hidden" name="min_stock" value="{{ min_s }}"></td>
 <td></td>
 <td><select name="category" class="t-input"><option value="None" {% if cat == 'None' %}selected{% endif %}>None</option>{% for c in categories %}<option value="{{ c.name }}" {% if c.name == cat %}selected{% endif %}>{% if c.parent_name %}{{ c.parent_name }} &gt; {% endif %}{{ c.name }}</option>{% endfor %}</select></td><td class="time-text">{{ ts[:10] }}</td><td><button type="submit" class="save-btn">Save</button> <a href="?q={{ query }}&sort_by={{ sort_by }}&direction={{ direction }}#search-box" class="edit-lnk" style="color:#666; margin-left:5px;">Cancel</a></td></form>
-{% else %}<td>{% if img %}<img src="/images/{{ img }}" class="part-img">{% else %}<span style="color:#ccc; font-size:11px;">No Photo</span>{% endif %}</td><td>{% if drawer_loc %}<b>{{ loc.split('-')[0] }}- {{ drawer_loc.split(':', 1)[-1].replace(',', ', ') }}</b> <span onclick="viewMatrixLocation('{{ drawer_loc }}')" title="View on Frame Matrix" style="cursor:pointer;">👁️</span>{% else %}<b>{{ loc }}</b>{% endif %}</td><td>{% if prof %}<img src="/parts_images/{{ prof }}" class="part-img">{% else %}<span style="color:#ccc; font-size:11px;">No Profile</span>{% endif %}</td><td>{{ name }}<br><small style="color:#777;">{{ notes }}</small></td>
+{% else %}<td>{% if img %}<img src="/images/{{ img }}" class="part-img">{% else %}<span style="color:#ccc; font-size:11px;">No Photo</span>{% endif %}</td><td>{% if drawer_loc %}<b>{{ loc.split('-')[0] }}- {{ drawer_loc.split(':', 1)[-1].replace(',', ', ') }}</b> <span onclick="viewMatrixLocation('{{ drawer_loc }}')" title="View on Frame Matrix" style="cursor:pointer;">👁️</span>{% else %}<b>{{ loc }}</b>{% endif %}</td><td>{% if prof %}<img src="/images/{{ prof }}" class="part-img">{% else %}<span style="color:#ccc; font-size:11px;">No Profile</span>{% endif %}</td><td>{{ name }}<br><small style="color:#777;">{{ notes }}</small></td>
 <td style="text-align:center;">{% if p_url %}<a href="{{ p_url }}" target="_blank" class="buy-link" title="Buy Link">🔗</a>{% endif %}</td>
 <td>{{ cat }}</td><td class="time-text">{{ ts[:10] }}</td><td><a href="?edit={{ item_id }}&q={{ query }}&sort_by={{ sort_by }}&direction={{ direction }}#search-box" class="edit-lnk">Edit</a><form action="/delete/{{ item_id }}" method="POST" style="display:inline;" onsubmit="return confirm('Verification: Are you sure you want to permanently delete this part record?');"><button type="submit" class="del-btn">Delete</button></form></td>{% endif %}</tr>
 {% else %}<tr><td colspan="9" style="text-align:center; color:#777;">No items found</td></tr>{% endfor %}</tbody></table></div></div></body></html>"""
 @app.route("/images/<filename>")
-def get_image(filename): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-@app.route("/parts_images/<filename>")
-def get_parts_image(filename): return send_from_directory(app.config['PROFILES_FOLDER'], filename)
+def get_image(filename): return send_from_directory(app.config['IMAGES_FOLDER'], filename)
 
 @app.route("/api/list_images")
 def list_images():
-    files = os.listdir(app.config['UPLOAD_FOLDER'])
-    return jsonify(sorted([f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))]))
-
-@app.route("/api/list_profile_images")
-def list_profile_images():
-    if not os.path.exists(app.config['PROFILES_FOLDER']): return jsonify([])
-    files = os.listdir(app.config['PROFILES_FOLDER'])
+    files = os.listdir(app.config['IMAGES_FOLDER'])
     return jsonify(sorted([f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))]))
 
 @app.route("/api/matrix_status")
@@ -717,13 +708,12 @@ def api_matrix_status():
 def get_disk_stats():
     total_size = 0
     total_count = 0
-    for path in [UPLOAD_FOLDER, PROFILES_FOLDER]:
-        if os.path.exists(path):
-            for f in os.listdir(path):
-                fp = os.path.join(path, f)
-                if os.path.isfile(fp) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
-                    total_count += 1
-                    total_size += os.path.getsize(fp)
+    if os.path.exists(IMAGES_FOLDER):
+        for f in os.listdir(IMAGES_FOLDER):
+            fp = os.path.join(IMAGES_FOLDER, f)
+            if os.path.isfile(fp) and f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
+                total_count += 1
+                total_size += os.path.getsize(fp)
     size_mb = round(total_size / (1024 * 1024), 2)
     return {"count": total_count, "size": size_mb}
 
@@ -782,13 +772,9 @@ def index():
         items = conn.execute(select_query + order_clause).fetchall()
     conn.close()
     
-    profile_list = []
-    if os.path.exists(PROFILES_FOLDER):
-        profile_list = sorted([f for f in os.listdir(PROFILES_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))])
-
     image_list = []
-    if os.path.exists(UPLOAD_FOLDER):
-        image_list = sorted([f for f in os.listdir(UPLOAD_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))])
+    if os.path.exists(IMAGES_FOLDER):
+        image_list = sorted([f for f in os.listdir(IMAGES_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'))])
 
     storage_stats = get_disk_stats()
     audit_stats = get_audit_stats()
@@ -797,7 +783,7 @@ def index():
     undo_info = get_undo_info()
 
     full_html = HTML_PAGE + HTML_JS + HTML_BODY_FORM + HTML_TAIL + HTML_TABLE_BOX + HTML_TABLE_LOOP
-    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, profile_list=profile_list, image_list=image_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups, undo_info=undo_info)
+    return render_template_string(full_html, items=items, query=q, categories=categories, edit_id=edit_id, sort_by=sort_by, direction=direction, image_list=image_list, storage_stats=storage_stats, audit_stats=audit_stats, matrix_skeleton=matrix_skeleton, backups=backups, undo_info=undo_info)
 
 @app.route("/backup_db", methods=["POST"])
 def backup_db():
@@ -856,7 +842,7 @@ def add():
     init_prof = request.form.get('initial_profile', '').strip()
     
     if img_file and img_file.filename != "":
-        saved_name, err = save_uploaded_image(img_file, app.config['UPLOAD_FOLDER'])
+        saved_name, err = save_uploaded_image(img_file, app.config['IMAGES_FOLDER'])
         if err: flash(err)
         else: img_name = saved_name
 
@@ -878,7 +864,7 @@ def update_item(item_id):
     if clear_image == "1":
         conn.execute("UPDATE inventory SET image_filename = '' WHERE id = ?", (item_id,))
     elif img_file and img_file.filename != "":
-        saved_name, err = save_uploaded_image(img_file, app.config['UPLOAD_FOLDER'])
+        saved_name, err = save_uploaded_image(img_file, app.config['IMAGES_FOLDER'])
         if err: flash(err)
         else: conn.execute("UPDATE inventory SET image_filename = ? WHERE id = ?", (saved_name, item_id))
     elif img_name != "":
@@ -890,7 +876,7 @@ def update_item(item_id):
     if clear_prof == "1":
         conn.execute("UPDATE inventory SET profile_filename = '' WHERE id = ?", (item_id,))
     elif prof_file and prof_file.filename != "":
-        saved_name, err = save_uploaded_image(prof_file, app.config['PROFILES_FOLDER'])
+        saved_name, err = save_uploaded_image(prof_file, app.config['IMAGES_FOLDER'])
         if err: flash(err)
         else: conn.execute("UPDATE inventory SET profile_filename = ? WHERE id = ?", (saved_name, item_id))
     elif prof_name != "":
@@ -984,24 +970,12 @@ def undo_bulk_action():
     flash(f"Undid last bulk action ({snapshot['action']}) affecting {len(snapshot['rows'])} item(s).")
     return redirect("/#search-box")
 
-@app.route("/upload_to_parts_images", methods=["POST"])
-def upload_to_parts_images():
-    errors, saved = [], 0
-    for f in request.files.getlist("parts_files"):
-        if f and f.filename != "":
-            _, err = save_uploaded_image(f, app.config['PROFILES_FOLDER'], rename=False)
-            if err: errors.append(err)
-            else: saved += 1
-    if saved: flash(f"Uploaded {saved} file(s).")
-    for err in errors: flash(err)
-    return redirect("/")
-
 @app.route("/upload_to_images", methods=["POST"])
 def upload_to_images():
     errors, saved = [], 0
     for f in request.files.getlist("images_files"):
         if f and f.filename != "":
-            _, err = save_uploaded_image(f, app.config['UPLOAD_FOLDER'], rename=False)
+            _, err = save_uploaded_image(f, app.config['IMAGES_FOLDER'], rename=False)
             if err: errors.append(err)
             else: saved += 1
     if saved: flash(f"Uploaded {saved} file(s).")
@@ -1088,15 +1062,14 @@ def cleanup_orphaned_images():
     conn.close()
     
     deleted_count = 0
-    for path in [UPLOAD_FOLDER, PROFILES_FOLDER]:
-        if os.path.exists(path):
-            for filename in os.listdir(path):
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
-                    if filename not in active_images:
-                        try:
-                            os.remove(os.path.join(path, filename))
-                            deleted_count += 1
-                        except Exception: pass
+    if os.path.exists(IMAGES_FOLDER):
+        for filename in os.listdir(IMAGES_FOLDER):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp')):
+                if filename not in active_images:
+                    try:
+                        os.remove(os.path.join(IMAGES_FOLDER, filename))
+                        deleted_count += 1
+                    except Exception: pass
     flash(f"Success! Storage cleanup complete. Purged {deleted_count} orphaned files.")
     return redirect("/#search-box")
 @app.route("/export_categories_csv")
