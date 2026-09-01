@@ -21,7 +21,15 @@ def save_uploaded_image(file, folder, rename=True):
     ext = os.path.splitext(safe_name)[1].lower()
     if not safe_name or ext not in ALLOWED_IMAGE_EXTENSIONS:
         return None, f"'{file.filename}' was not saved: unsupported file type."
-    name = f"{uuid.uuid4().hex}{ext}" if rename else safe_name
+    if rename:
+        name = f"{uuid.uuid4().hex}{ext}"
+    else:
+        base = safe_name[:-len(ext)] if ext else safe_name
+        name = safe_name
+        counter = 1
+        while os.path.exists(os.path.join(folder, name)):
+            name = f"{base}_{counter}{ext}"
+            counter += 1
     try:
         file.save(os.path.join(folder, name))
     except OSError as e:
@@ -181,6 +189,9 @@ th { background: #eee; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 
 .modal-content { background: white; margin: 10% auto; padding: 20px; width: 60%; border-radius: 5px; max-height: 60vh; overflow-y: auto; }
 #matrixModal { background: transparent; pointer-events: none; }
 #matrixModal .modal-content { pointer-events: auto; position: fixed; top: 10%; left: 50%; transform: translateX(-50%); margin: 0; box-shadow: 0 4px 18px rgba(0,0,0,0.3); }
+#imgModal .modal-content { display: flex; flex-direction: column; overflow: hidden; position: fixed; top: 10%; left: 50%; transform: translateX(-50%); margin: 0; box-shadow: 0 4px 18px rgba(0,0,0,0.3); }
+.modal-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding-bottom: 8px; cursor: move; user-select: none; }
+.modal-scroll-body { overflow-y: auto; flex: 1; min-height: 0; }
 #matrixModalTitle { cursor: move; user-select: none; }
 .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 15px; }
 .img-grid img { width: 100%; height: 80px; object-fit: cover; border: 2px solid #ccc; border-radius: 4px; cursor: pointer; }
@@ -210,6 +221,8 @@ HTML_JS = """<script>
 let currentTargetField = 'selected_existing_image';
 let currentPromptField = '.drop-zone__prompt';
 let currentPreviewImgId = null;
+let currentPathPrefix = '';
+let currentImageFiles = [];
 let matrixTargetFieldId = '';
 let matrixItemsByCoord = {};
 function showMatrixItemDetails(coord) {
@@ -251,30 +264,49 @@ function setMode(mode){
     var section = document.getElementById("drawerMatrixConfigSection");
     if(section) section.style.display = (mode === "drawer") ? "block" : "none";
 }
+function renderImageGrid(filterText){
+    const grid = document.getElementById("modalImgGrid"); grid.innerHTML = "";
+    const filter = (filterText || "").toLowerCase();
+    currentImageFiles.filter(img => img.toLowerCase().includes(filter)).forEach(img => {
+        const item = document.createElement("div");
+        item.style.cssText = "display:flex; flex-direction:column; align-items:center; cursor:pointer;";
+        const el = document.createElement("img"); el.src = currentPathPrefix + img;
+        const label = document.createElement("span");
+        label.textContent = img.replace(/\\.[^.]+$/, "");
+        label.style.cssText = "font-size:10px; color:#555; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; margin-top:2px;";
+        item.onclick = () => {
+            document.getElementById(currentTargetField).value = img;
+            const promptEl = document.querySelector(currentPromptField);
+            if(promptEl) promptEl.textContent = "Selected: " + img;
+            if(currentPreviewImgId) {
+                document.getElementById(currentPreviewImgId).src = currentPathPrefix + img;
+                document.getElementById(currentPreviewImgId).style.display = "block";
+            }
+            const clearFlagId = currentTargetField.replace('edit_existing_image_', 'clear_image_flag_').replace('edit_existing_profile_', 'clear_profile_flag_');
+            if(clearFlagId !== currentTargetField) {
+                const clearFlag = document.getElementById(clearFlagId);
+                if(clearFlag) clearFlag.value = "0";
+            }
+            closeImageModal();
+        };
+        item.appendChild(el);
+        item.appendChild(label);
+        grid.appendChild(item);
+    });
+}
 function openImageModal(targetInputId, promptClass, previewImgId, apiEndpoint, pathPrefix, modalTitle){
     currentTargetField = targetInputId;
     currentPromptField = promptClass;
     currentPreviewImgId = previewImgId;
+    currentPathPrefix = pathPrefix;
     document.getElementById("imgModalTitle").textContent = modalTitle || "Select Gallery Image";
+    const searchInput = document.getElementById("imgSearchInput");
+    if(searchInput) searchInput.value = "";
     document.getElementById("imgModal").style.display = "block";
+    if(searchInput) searchInput.focus();
     fetch(apiEndpoint).then(r => r.json()).then(images => {
-        const grid = document.getElementById("modalImgGrid"); grid.innerHTML = "";
-        images.forEach(img => {
-            const el = document.createElement("img"); el.src = pathPrefix + img;
-            el.onclick = () => { 
-                document.getElementById(currentTargetField).value = img; 
-                const promptEl = document.querySelector(currentPromptField);
-                if(promptEl) promptEl.textContent = "Selected: " + img; 
-                if(currentPreviewImgId) {
-                    document.getElementById(currentPreviewImgId).src = pathPrefix + img;
-                    document.getElementById(currentPreviewImgId).style.display = "block";
-                }
-                const clearFlag = document.getElementById(currentTargetField.replace('edit_existing_image_', 'clear_image_flag_').replace('edit_existing_profile_', 'clear_profile_flag_'));
-                if(clearFlag) clearFlag.value = "0";
-                closeImageModal(); 
-            };
-            grid.appendChild(el);
-        });
+        currentImageFiles = images;
+        renderImageGrid("");
     });
 }
 function closeImageModal(){ document.getElementById("imgModal").style.display = "none"; }
@@ -349,12 +381,12 @@ function viewMatrixLocation(rawValue) {
     });
 }
 function closeMatrixModal() { document.getElementById("matrixModal").style.display = "none"; }
-document.addEventListener('DOMContentLoaded', function() {
-    const handle = document.getElementById('matrixModalTitle');
+function makeModalDraggable(handle, excludeSelector) {
     const content = handle ? handle.closest('.modal-content') : null;
     if(!handle || !content) return;
     let dragging = false, offsetX = 0, offsetY = 0;
     handle.addEventListener('mousedown', function(e) {
+        if(excludeSelector && e.target.closest(excludeSelector)) return;
         dragging = true;
         const rect = content.getBoundingClientRect();
         content.style.transform = 'none';
@@ -366,10 +398,18 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.addEventListener('mousemove', function(e) {
         if(!dragging) return;
-        content.style.left = (e.clientX - offsetX) + 'px';
-        content.style.top = (e.clientY - offsetY) + 'px';
+        const maxLeft = window.innerWidth - content.offsetWidth;
+        const maxTop = window.innerHeight - content.offsetHeight;
+        const newLeft = Math.max(0, Math.min(e.clientX - offsetX, maxLeft));
+        const newTop = Math.max(0, Math.min(e.clientY - offsetY, maxTop));
+        content.style.left = newLeft + 'px';
+        content.style.top = newTop + 'px';
     });
     document.addEventListener('mouseup', function() { dragging = false; });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    makeModalDraggable(document.getElementById('matrixModalTitle'));
+    makeModalDraggable(document.querySelector('#imgModal .modal-header'), 'span');
 });
 function applyMatrixSelection() {
     const targetField = document.getElementById(matrixTargetFieldId);
@@ -468,7 +508,7 @@ function submitBulkForm(actionType) {
     const checkboxes = document.querySelectorAll(".row-select-checkbox:checked");
     if(checkboxes.length === 0) return;
     if(actionType === 'delete' && !confirm(`Verification: Are you sure you want to permanently delete all ${checkboxes.length} selected items?`)) { return; }
-    if((actionType === 'profile' || actionType === 'image') && !document.getElementById("bulkImageSelect").value) { alert("No images available to assign."); return; }
+    if((actionType === 'profile' || actionType === 'image') && !document.getElementById("bulkImageSelect").value) { alert("Please choose an image before assigning."); return; }
     const itemIds = Array.from(checkboxes).map(cb => cb.value);
     document.getElementById("bulkItemIdsHidden").value = itemIds.join(",");
     document.getElementById("bulkActionTypeHidden").value = actionType;
@@ -544,7 +584,7 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
     <div class="btn-container"><button type="submit">Save Part</button><button type="button" class="clr-btn" onclick="clearManualForm()">Clear</button></div>
 </form></div>
 
-<div id="imgModal" class="modal"><div class="modal-content"><span style="float:right; cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeImageModal()">&times;</span><h4 id="imgModalTitle">Select Gallery Image</h4><div id="modalImgGrid" class="img-grid"></div></div></div>
+<div id="imgModal" class="modal"><div class="modal-content"><div class="modal-header"><h4 id="imgModalTitle" style="margin:0;">Select Gallery Image</h4><span style="cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeImageModal()">&times;</span></div><input type="text" id="imgSearchInput" placeholder="Search images..." oninput="renderImageGrid(this.value)" style="flex-shrink:0; margin:0 0 10px 0;"><div class="modal-scroll-body"><div id="modalImgGrid" class="img-grid"></div></div></div></div>
 
 <div id="matrixModal" class="modal"><div class="modal-content" style="width:520px; max-height:85vh;"><span style="float:right; cursor:pointer; font-weight:bold; font-size:20px;" onclick="closeMatrixModal()">&times;</span><h4 id="matrixModalTitle" style="margin-top:0; margin-bottom:4px; text-align:center;">📦 Drawer:</h4>
 <div id="matrixModalHint" style="text-align:center; font-size:11px; color:#777; margin-bottom:10px;">Click to select one slot. Ctrl+Click to select multiple.</div>
@@ -558,7 +598,7 @@ HTML_BODY_FORM = """<body><h2>🛠️ Workshop Inventory Engine</h2>
 """
 HTML_TAIL = """<div class="box-compact" style="background: #eef1f6;">
     <div class="grid-split">
-        <div><h3>📷 Bulk Image Upload</h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
+        <div><h3>📷 Bulk Image Upload <a href="https://www.mcmaster.com" target="_blank" rel="noopener" style="font-size:11px; font-weight:bold; background:#ff6a00; color:white; text-decoration:none; padding:3px 8px; border-radius:3px; vertical-align:middle;">McMaster-Carr ↗</a></h3><form action="/upload_to_images" method="POST" enctype="multipart/form-data"><input type="file" name="images_files" multiple accept="image/*" required style="background:white; padding:3px; margin-bottom:4px; width:100%; font-size:12px;"><button type="submit" style="background:#17a2b8; width:100%; font-size:12px; padding:5px 8px;">Upload to images</button></form></div>
         <div style="display: flex; flex-direction: column; justify-content: space-between;">
             <div><h3>🧹 System Storage Clean</h3>
                 <p style="font-size:12px; margin:0 0 2px 0; color:#555; line-height:1.2;">Purge unreferenced image assets from storage disk.</p>
@@ -640,9 +680,9 @@ HTML_TABLE_BOX = """<div class="box" id="search-box">
             {% for c in categories %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
         </select>
         <button type="button" style="background: #17a2b8;" onclick="submitBulkForm('category')">Assign Type</button>
-        <select id="bulkImageSelect">
-            {% for img in image_list %}<option value="{{ img }}">{{ img }}</option>{% endfor %}
-        </select>
+        <input type="hidden" id="bulkImageSelect" value="">
+        <button type="button" style="background:#6c757d;" onclick="openImageModal('bulkImageSelect', '#bulkImageSelectLabel', null, '/api/list_images', '/images/', 'Select Image for Bulk Assign')">Choose Image</button>
+        <span id="bulkImageSelectLabel" style="font-size:11px; color:#555; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">No image chosen</span>
         <button type="button" style="background: #6f42c1;" onclick="submitBulkForm('profile')">Assign Profile</button>
         <button type="button" style="background: #007bff;" onclick="submitBulkForm('image')">Assign Photo</button>
         <button type="button" style="background: #dc3545;" onclick="submitBulkForm('delete')">Mass Delete</button>
